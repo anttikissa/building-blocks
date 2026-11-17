@@ -11,6 +11,7 @@ file. To use one, copy it into your project and note the commit it came from.
 | `tid.ts` | Short ids that sort by creation time, and unguessable secrets. Both carry at most 128 bits. |
 | `log.ts` | One timestamped line per event on stdout, plus one file per day if you want it. Needs `ason.ts`. |
 | `validate.ts` | Typed parsing of env and config files, URL parameters and request bodies, in the style of zod. |
+| `qr.ts` | QR codes, byte mode, level M, versions 1-40: text in, module matrix and SVG path out. |
 
 ## Develop
 
