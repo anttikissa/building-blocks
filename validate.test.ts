@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { v, type Infer } from './validate'
+import { v, ValidationError, type Infer } from './validate'
 
 const Env = v.object({
 	PORT: v.int().min(1).max(65535).default(4710),
@@ -7,7 +7,7 @@ const Env = v.object({
 	NAME: v.string().optional(),
 	ADMIN: v.email(),
 	DEBUG: v.boolean().default(false),
-	MODE: v.oneOf('dev', 'prod'),
+	MODE: v.oneOf(['dev', 'prod']),
 	HOME: v.url(),
 	TAGS: v.array(v.string().min(1)).optional(),
 	DB: v.object({ path: v.string() }).optional(),
@@ -73,5 +73,34 @@ test('lists every bad field by path and never quotes values', () => {
 	expect(() => Env.parse(undefined)).toThrow('value: required')
 	expect(() => v.int().parse('1.5')).toThrow('value: expected an integer')
 	expect(() => v.number().parse(' ')).toThrow('value: expected a number')
-	expect(() => v.email().parse(`${'a'.repeat(250)}@b.cc`)).toThrow('value: must be at most 254')
+	expect(() => v.email().parse(`${'a'.repeat(250)}@b.cc`)).toThrow('value: must have at most 254 characters')
+})
+
+test('issues carry path, code and limit, with custom messages for forms', () => {
+	const Signup = v.object({
+		email: v.email('Check the email address.').transform((s) => s.toLowerCase()),
+		password: v.string('Type a password.').min(8, 'Use at least 8 characters.'),
+		name: v
+			.string()
+			.transform((s) => s.trim())
+			.min(1),
+	})
+	expect(Signup.parse({ email: 'A@Example.com', password: '12345678', name: ' Ann ' })).toEqual({
+		email: 'a@example.com',
+		password: '12345678',
+		name: 'Ann',
+	})
+	let error: unknown
+	try {
+		Signup.parse({ email: 'nope', password: 'short', name: '  ' })
+	} catch (e) {
+		error = e
+	}
+	expect(error).toBeInstanceOf(ValidationError)
+	expect((error as ValidationError).issues).toEqual([
+		{ path: 'email', code: 'type', message: 'Check the email address.' },
+		{ path: 'password', code: 'min', limit: 8, message: 'Use at least 8 characters.' },
+		{ path: 'name', code: 'min', limit: 1, message: 'must have at least 1 character' },
+	])
+	expect(() => Signup.parse({ name: 'x' })).toThrow('email: Check the email address.\npassword: Type a password.')
 })
