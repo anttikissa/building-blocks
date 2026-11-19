@@ -1,6 +1,6 @@
 // Parses untrusted input into typed values: env and config files, URL parameters, request bodies.
 // Env files and URLs hold only strings, so numbers and booleans also accept their string forms, and
-// an empty string counts as missing (KEY= in an env file). parse() throws a ValidationError whose
+// an empty string or null counts as missing. parse() throws a ValidationError whose
 // issues name each bad field, so a server can send them and a form can show each under its field.
 // Every type and rule takes an optional message. Messages never quote values: they may be secrets.
 //
@@ -55,7 +55,12 @@ export class Schema<T> {
 			const before = issues.length
 			const result = this.check(value, path, issues)
 			if (issues.length === before && !ok(result))
-				issues.push({ path, code, limit, message: typeof message === 'string' ? message : message(result) })
+				issues.push({
+					path,
+					code,
+					...(limit === undefined ? {} : { limit }),
+					message: typeof message === 'string' ? message : message(result),
+				})
 			return result
 		})
 	}
@@ -73,6 +78,10 @@ export class Schema<T> {
 		return new Schema((value, path, issues) => (missing(value) ? undefined : this.check(value, path, issues)))
 	}
 
+	nullable(): Schema<T | null> {
+		return new Schema((value, path, issues) => (missing(value) ? null : this.check(value, path, issues)))
+	}
+
 	default(fallback: T): Schema<T> {
 		return new Schema((value, path, issues) => (missing(value) ? fallback : this.check(value, path, issues)))
 	}
@@ -80,7 +89,8 @@ export class Schema<T> {
 
 export type Infer<S> = S extends Schema<infer T> ? T : never
 
-const missing = (x: unknown) => x === undefined || x === ''
+// JSON clients send null for an empty field; env files and forms send ''.
+const missing = (x: unknown) => x === undefined || x === null || x === ''
 const size = (x: unknown) => (typeof x === 'number' ? x : (x as { length: number }).length)
 const limit = (bound: string, n: number, x: unknown) =>
 	typeof x === 'number'
@@ -136,6 +146,18 @@ function object<S extends Record<string, Schema<unknown>>>(
 	})
 }
 
+// The first option that accepts the value wins.
+function union<const S extends Schema<unknown>[]>(options: S, message?: string): Schema<Infer<S[number]>> {
+	return new Schema((value, path, issues) => {
+		for (const option of options) {
+			const own: Issue[] = []
+			const result = option.check(value, path, own)
+			if (!own.length) return result as Infer<S[number]>
+		}
+		return fail(value, path, issues, 'a valid value', message)
+	})
+}
+
 export const v = {
 	string: (message?: string) => scalar('a string', text, message),
 	number: (message?: string) => scalar('a number', number, message),
@@ -151,4 +173,5 @@ export const v = {
 		),
 	array,
 	object,
+	union,
 }

@@ -104,3 +104,28 @@ test('issues carry path, code and limit, with custom messages for forms', () => 
 	])
 	expect(() => Signup.parse({ name: 'x' })).toThrow('email: Check the email address.\npassword: Type a password.')
 })
+
+test('null counts as missing; nullable() gives null', () => {
+	expect(v.string().optional().parse(null)).toBeUndefined()
+	expect(v.string().nullable().parse(undefined)).toBeNull()
+	expect(v.string().nullable().parse('a')).toBe('a')
+	expect(() => v.string().parse(null)).toThrow('value: required')
+})
+
+test('union takes the first option that accepts the value', () => {
+	const Price = v.union([v.string(), v.number()], 'Give a price.')
+	expect(Price.parse(3)).toBe(3)
+	expect(Price.parse('3')).toBe('3')
+	expect(() => Price.parse(true)).toThrow('value: Give a price.')
+	expect(() => v.union([v.int().min(1), v.oneOf(['all'])]).parse(0)).toThrow('value: expected a valid value')
+})
+
+test('issues without a limit have no limit key', () => {
+	try {
+		v.string()
+			.refine((s) => s === 'x', 'not x')
+			.parse('y')
+	} catch (e) {
+		expect(Object.keys((e as ValidationError).issues[0]!)).toEqual(['path', 'code', 'message'])
+	}
+})
